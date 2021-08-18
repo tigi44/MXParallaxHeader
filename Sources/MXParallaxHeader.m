@@ -49,10 +49,7 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 @end
 
 @interface MXParallaxHeader ()
-@property (nonatomic, weak) UIScrollView *scrollView;
-
-@property (nonatomic, strong) NSLayoutConstraint *positionConstraint;
-@property (nonatomic, strong) NSLayoutConstraint *heightConstraint;
+@property (nonatomic,weak) UIScrollView *scrollView;
 @end
 
 @implementation MXParallaxHeader {
@@ -68,10 +65,6 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
         MXParallaxView *contentView = [MXParallaxView new];
         contentView.parent = self;
         contentView.clipsToBounds = YES;
-        contentView.translatesAutoresizingMaskIntoConstraints = NO;
-
-        _heightConstraint = [contentView.heightAnchor constraintEqualToConstant:0];
-
         _contentView = contentView;
     }
     return _contentView;
@@ -80,15 +73,9 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 - (void)setView:(UIView *)view {
     if (view != _view) {
         [_view removeFromSuperview];
+        
         _view = view;
-
         [self updateConstraints];
-
-        [self.contentView layoutIfNeeded];
-
-        self.height = self.contentView.frame.size.height;
-        self.heightConstraint.constant = self.height;
-        self.heightConstraint.active = YES;
     }
 }
 
@@ -101,14 +88,12 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 
 - (void)setHeight:(CGFloat)height {
     if (_height != height) {
-
+        
         //Adjust content inset
         [self adjustScrollViewTopInset:self.scrollView.contentInset.top - _height + height];
-
+        
         _height = height;
-
-        self.heightConstraint.constant = height;
-        self.heightConstraint.active = YES;
+        [self updateConstraints];
         [self layoutContentView];
     }
 }
@@ -121,6 +106,13 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 - (void)setScrollView:(UIScrollView *)scrollView {
     if (_scrollView != scrollView) {
         _scrollView = scrollView;
+        
+        //Adjust content inset
+        [self adjustScrollViewTopInset:scrollView.contentInset.top + self.height];
+        [scrollView addSubview:self.contentView];
+        
+        //Layout content view
+        [self layoutContentView];
         _isObserving = YES;
     }
 }
@@ -128,7 +120,7 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 - (void)setProgress:(CGFloat)progress {
     if(_progress != progress) {
         _progress = progress;
-
+        
         if ([self.delegate respondsToSelector:@selector(parallaxHeaderDidScroll:)]) {
             [self.delegate parallaxHeaderDidScroll:self];
         }
@@ -143,39 +135,36 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 #pragma mark Constraints
 
 - (void)updateConstraints {
-    if (!self.view) return;
-
-    [self.contentView removeFromSuperview];
-    [self.scrollView addSubview:self.contentView];
-
+    if (!self.view) {
+        return;
+    }
+    
     [self.view removeFromSuperview];
     [self.contentView addSubview:self.view];
-
+    
     self.view.translatesAutoresizingMaskIntoConstraints = NO;
-
+    
     switch (self.mode) {
         case MXParallaxHeaderModeFill:
             [self setFillModeConstraints];
             break;
-
+            
         case MXParallaxHeaderModeTopFill:
             [self setTopFillModeConstraints];
             break;
-
+            
         case MXParallaxHeaderModeTop:
             [self setTopModeConstraints];
             break;
-
+            
         case MXParallaxHeaderModeBottom:
             [self setBottomModeConstraints];
             break;
-
+            
         default:
             [self setCenterModeConstraints];
             break;
     }
-
-    [self setContentViewConstraints];
 }
 
 - (void)setCenterModeConstraints {
@@ -217,38 +206,34 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
     [self.view.heightAnchor constraintEqualToConstant:self.height].active = YES;
 }
 
-- (void)setContentViewConstraints {
-    [self.contentView.leadingAnchor constraintEqualToAnchor:self.scrollView.leadingAnchor].active = YES;
-    [self.contentView.trailingAnchor constraintEqualToAnchor:self.scrollView.trailingAnchor].active = YES;
-
-    self.positionConstraint = [self.contentView.topAnchor constraintEqualToAnchor:self.scrollView.topAnchor];
-    self.positionConstraint.active = YES;
-}
-
 #pragma mark Private Methods
 
 - (void)layoutContentView {
     CGFloat minimumHeight = MIN(self.minimumHeight, self.height);
     CGFloat relativeYOffset = self.scrollView.contentOffset.y + self.scrollView.contentInset.top - self.height;
     CGFloat relativeHeight  = -relativeYOffset;
-
-    self.positionConstraint.constant = relativeYOffset;
-    self.heightConstraint.constant = MAX(relativeHeight, minimumHeight);
-
-    [self.contentView layoutSubviews];
-
+    
+    CGRect frame = (CGRect){
+        .origin.x       = 0,
+        .origin.y       = relativeYOffset,
+        .size.width     = self.scrollView.frame.size.width,
+        .size.height    = MAX(relativeHeight, minimumHeight)
+    };
+    
+    self.contentView.frame = frame;
+    
     CGFloat div = self.height - self.minimumHeight;
     self.progress = (self.contentView.frame.size.height - self.minimumHeight) / (div? : self.height);
 }
 
 - (void)adjustScrollViewTopInset:(CGFloat)top {
     UIEdgeInsets inset = self.scrollView.contentInset;
-
+    
     //Adjust content offset
     CGPoint offset = self.scrollView.contentOffset;
     offset.y += inset.top - top;
     self.scrollView.contentOffset = offset;
-
+    
     //Adjust content inset
     inset.top = top;
     self.scrollView.contentInset = inset;
@@ -258,7 +243,7 @@ static void * const kMXParallaxHeaderKVOContext = (void*)&kMXParallaxHeaderKVOCo
 
 //This is where the magic happens...
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-
+    
     if (context == kMXParallaxHeaderKVOContext) {
         if ([keyPath isEqualToString:NSStringFromSelector(@selector(contentOffset))]) {
             [self layoutContentView];

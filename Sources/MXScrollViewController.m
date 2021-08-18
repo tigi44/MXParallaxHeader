@@ -24,35 +24,27 @@
 #import "MXScrollViewController.h"
 
 @interface MXScrollViewController ()
-@property (nonatomic, weak) IBOutlet UIView *headerView;
+@property (nonatomic,weak) IBOutlet UIView *headerView;
 @property (nonatomic) IBInspectable CGFloat headerHeight;
 @property (nonatomic) IBInspectable CGFloat headerMinimumHeight;
-@property (nonatomic, weak) NSLayoutConstraint *childHeightConstraint;
 @end
 
 @implementation MXScrollViewController
 
 static void * const kMXScrollViewControllerKVOContext = (void*)&kMXScrollViewControllerKVOContext;
-
 @synthesize scrollView = _scrollView;
-@dynamic headerHeight;
-@dynamic headerMinimumHeight;
+
+- (void)loadView {
+    self.view = self.scrollView;
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-
-    self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [self.view addSubview:self.scrollView];
-    [self.scrollView.topAnchor constraintEqualToAnchor:self.view.topAnchor].active = YES;
-    [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor].active = YES;
-    [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor].active = YES;
-    [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor].active = YES;
-
+    
     self.scrollView.parallaxHeader.view = self.headerView;
     self.scrollView.parallaxHeader.height = self.headerHeight;
     self.scrollView.parallaxHeader.minimumHeight = self.headerMinimumHeight;
-
+    
     //Hack to perform segues on load
     @try {
         NSArray *templates = [self valueForKey:@"storyboardSegueTemplates"];
@@ -75,21 +67,40 @@ static void * const kMXScrollViewControllerKVOContext = (void*)&kMXScrollViewCon
 
     if (@available(iOS 11.0, *)) return;
 
-    if (self.automaticallyAdjustsScrollViewInsets) {
-        self.headerMinimumHeight = self.topLayoutGuide.length;
+    if (self.automaticallyAdjustsScrollViewInsets && !self.headerMinimumHeight) {
+        self.scrollView.parallaxHeader.minimumHeight = self.topLayoutGuide.length;
     }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
+    self.scrollView.contentSize = self.scrollView.frame.size;
+    [self layoutChildViewController];
+}
+
+- (void)layoutChildViewController {
+    CGRect frame = self.scrollView.bounds;
+    frame.origin = CGPointZero;
+    frame.size.height -= self.scrollView.parallaxHeader.minimumHeight;
+
+    if (@available(iOS 11.0, *)) { } else {
+        frame.size.height -= self.bottomLayoutGuide.length;
+    }
+
+    self.childViewController.view.frame = frame;
 }
 
 - (void)viewSafeAreaInsetsDidChange {
     [super viewSafeAreaInsetsDidChange];
 
-    if (self.scrollView.contentInsetAdjustmentBehavior != UIScrollViewContentInsetAdjustmentNever) {
-        self.headerMinimumHeight = self.view.safeAreaInsets.top;
-
-        UIEdgeInsets safeAreaInsets = UIEdgeInsetsZero;
-        safeAreaInsets.bottom = self.view.safeAreaInsets.bottom;
-        self.childViewController.additionalSafeAreaInsets = safeAreaInsets;
+    if (!self.headerMinimumHeight) {
+        self.scrollView.parallaxHeader.minimumHeight = self.view.safeAreaInsets.top;
     }
+
+    UIEdgeInsets safeAreaInsets = UIEdgeInsetsZero;
+    safeAreaInsets.bottom = self.view.safeAreaInsets.bottom;
+    self.childViewController.additionalSafeAreaInsets = safeAreaInsets;
 }
 
 #pragma mark Properties
@@ -113,14 +124,14 @@ static void * const kMXScrollViewControllerKVOContext = (void*)&kMXScrollViewCon
         [_headerViewController removeFromParentViewController];
         [_headerViewController didMoveToParentViewController:nil];
     }
-
+    
     if (headerViewController) {
         [headerViewController willMoveToParentViewController:self];
         [self addChildViewController:headerViewController];
-
+        
         //Set parallaxHeader view
         objc_setAssociatedObject(headerViewController, @selector(parallaxHeader), self.scrollView.parallaxHeader, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
+        
         self.scrollView.parallaxHeader.view = headerViewController.view;
         [headerViewController didMoveToParentViewController:self];
     }
@@ -134,50 +145,18 @@ static void * const kMXScrollViewControllerKVOContext = (void*)&kMXScrollViewCon
         [_childViewController removeFromParentViewController];
         [_childViewController didMoveToParentViewController:nil];
     }
-
+    
     if (childViewController) {
         [childViewController willMoveToParentViewController:self];
         [self addChildViewController:childViewController];
-
-        // Set UIViewController's parallaxHeader property
+        
+        //Set UIViewController's parallaxHeader property
         objc_setAssociatedObject(childViewController, @selector(parallaxHeader), self.scrollView.parallaxHeader, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
+        
         [self.scrollView addSubview:childViewController.view];
-
-        // Set child's constraints
-        childViewController.view.translatesAutoresizingMaskIntoConstraints = NO;
-
-        [childViewController.view.leadingAnchor constraintEqualToAnchor:self.scrollView.leadingAnchor].active = YES;
-        [childViewController.view.trailingAnchor constraintEqualToAnchor:self.scrollView.trailingAnchor].active = YES;
-        [childViewController.view.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor].active = YES;
-
-        [childViewController.view.topAnchor constraintEqualToAnchor:self.scrollView.topAnchor].active = YES;
-        [childViewController.view.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor].active = YES;
-
-        self.childHeightConstraint = [childViewController.view.heightAnchor constraintEqualToAnchor:self.scrollView.heightAnchor constant:-self.headerMinimumHeight];
-        self.childHeightConstraint.active = YES;
-
         [childViewController didMoveToParentViewController:self];
-
     }
     _childViewController = childViewController;
-}
-
-- (void)setHeaderHeight:(CGFloat)headerHeight {
-    self.scrollView.parallaxHeader.height = headerHeight;
-}
-
-- (CGFloat)headerHeight {
-    return self.scrollView.parallaxHeader.height;
-}
-
-- (void)setHeaderMinimumHeight:(CGFloat)headerMinimumHeight {
-    self.childHeightConstraint.constant = -headerMinimumHeight;
-    self.scrollView.parallaxHeader.minimumHeight = headerMinimumHeight;
-}
-
-- (CGFloat)headerMinimumHeight {
-    return self.scrollView.parallaxHeader.minimumHeight;
 }
 
 #pragma mark KVO
@@ -186,7 +165,7 @@ static void * const kMXScrollViewControllerKVOContext = (void*)&kMXScrollViewCon
     if (context == kMXScrollViewControllerKVOContext) {
         
         if (self.childViewController && [keyPath isEqualToString:NSStringFromSelector(@selector(minimumHeight))]) {
-            self.childHeightConstraint.constant = -self.scrollView.parallaxHeader.minimumHeight;
+            [self layoutChildViewController];
         }
     } else {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
@@ -238,3 +217,5 @@ static void * const kMXScrollViewControllerKVOContext = (void*)&kMXScrollViewCon
 }
 
 @end
+
+
